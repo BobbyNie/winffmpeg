@@ -80,7 +80,7 @@ def normalize(source, target, args, size):
                f"scale={width}:{height}:force_original_aspect_ratio=decrease:force_divisible_by=2,"
                f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1")
     video_only = target.with_suffix(".video.nut")
-    run([args.ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+    run([args.ffmpeg, "-xerror", "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
          "-i", str(source), "-map", "0:v:0", "-an", "-sn", "-dn",
          "-map_metadata", "-1", "-map_chapters", "-1", "-vf", filters,
          "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-pix_fmt", "yuv420p",
@@ -89,7 +89,7 @@ def normalize(source, target, args, size):
                               "-count_packets", "-show_entries", "stream=nb_read_packets",
                               "-of", "json", str(video_only)]))
     duration = int(packets["streams"][0]["nb_read_packets"]) / float(args.fps)
-    command = [args.ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+    command = [args.ffmpeg, "-xerror", "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
                "-i", str(video_only)]
     if audio:
         command += ["-i", str(source)]
@@ -117,7 +117,7 @@ def convert_group(clips, destination, args):
             entries.append(f"file '{segment.name}'\nduration {duration:.9f}\n")
         manifest = work / "segments.ffconcat"
         manifest.write_text("ffconcat version 1.0\n" + "".join(entries), encoding="utf-8")
-        run([args.ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+        run([args.ffmpeg, "-xerror", "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
              "-f", "concat", "-safe", "1", "-i", str(manifest),
              "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
              "-movflags", "+faststart", str(work / "result.mp4")])

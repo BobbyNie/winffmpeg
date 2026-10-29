@@ -186,7 +186,8 @@ bwdif=mode=send_field:parity=auto:deint=all → fps=25
 .mp4 .m4v .mov .mkv .avi .mts .m2ts .ts .mpeg .mpg .wmv .webm .flv .vob .mxf .3gp
 ```
 
-支持扩展名的损坏视频不会静默跳过。该组失败后，其他组继续处理。
+FFmpeg 检测到输入或解码错误时，该组失败，不发布部分结果。其他组继续处理。
+仅靠解码不能识别所有文件损坏，例如在完整帧边界截短且无可靠时长信息的文件。
 
 ## 退出码
 

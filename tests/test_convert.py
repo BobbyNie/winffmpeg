@@ -268,6 +268,14 @@ class ConversionTests(unittest.TestCase):
         info = self.probe(self.root / "output" / "launcher.mp4")
         self.assertEqual(info["streams"][0]["r_frame_rate"], "50/1")
 
+    def test_decode_errors_do_not_publish_a_partial_successful_video(self):
+        source = self.media(self.root / "damaged-packets" / "clip.avi")
+        # Keep the AVI header readable, but truncate an encoded video packet.
+        source.write_bytes(source.read_bytes()[:-500])
+        self.cli(expected=1)
+        self.assertFalse((self.root / "output" / "damaged-packets.mp4").exists())
+        self.assertFalse(any((self.root / "output").iterdir()))
+
 
 if __name__ == "__main__":
     unittest.main()
