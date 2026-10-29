@@ -1,5 +1,6 @@
 """End-to-end acceptance tests. All media is generated, not downloaded."""
 import json
+from fractions import Fraction
 import os
 from pathlib import Path
 import shutil
@@ -106,7 +107,8 @@ class ConversionTests(unittest.TestCase):
                          {"旅行 ' & one.mp4", "another.mp4"})
 
     def test_custom_integer_and_fractional_frame_rates(self):
-        self.media(self.root / "fps" / "clip.avi")
+        for index in range(3):
+            self.media(self.root / "fps" / f"clip{index}.avi")
         for rate, expected in [("50", "50/1"), ("30000/1001", "30000/1001")]:
             with self.subTest(rate=rate):
                 output = self.root / "output" / "fps.mp4"
@@ -115,7 +117,18 @@ class ConversionTests(unittest.TestCase):
                 self.cli("--fps", rate)
                 video = self.probe(output)["streams"][0]
                 self.assertEqual(video["r_frame_rate"], expected)
-                self.assertAlmostEqual(float(video["duration"]), 0.8, delta=0.05)
+                self.assertEqual(video["avg_frame_rate"], expected)
+                self.assertAlmostEqual(float(video["duration"]), 2.4, delta=0.05)
+                result = subprocess.run(
+                    [FFPROBE, "-v", "error", "-select_streams", "v:0", "-show_frames",
+                     "-show_entries", "frame=pts", "-of", "json", str(output)],
+                    check=True, capture_output=True, text=True, encoding="utf-8",
+                )
+                frames = json.loads(result.stdout)["frames"]
+                self.assertGreater(len(frames), 50)
+                intervals = {(b["pts"] - a["pts"]) * Fraction(video["time_base"])
+                             for a, b in zip(frames, frames[1:])}
+                self.assertEqual(intervals, {1 / Fraction(rate)})
 
     def comb_score(self, path):
         result = subprocess.run(

@@ -79,7 +79,7 @@ def normalize(source, target, args, size):
                "scale=w='max(2,trunc(iw*sar/2)*2)':h='max(2,trunc(ih/2)*2)',setsar=1,"
                f"scale={width}:{height}:force_original_aspect_ratio=decrease:force_divisible_by=2,"
                f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1")
-    video_only = target.with_suffix(".video.mkv")
+    video_only = target.with_suffix(".video.nut")
     run([args.ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
          "-i", str(source), "-map", "0:v:0", "-an", "-sn", "-dn",
          "-map_metadata", "-1", "-map_chapters", "-1", "-vf", filters,
@@ -112,7 +112,7 @@ def convert_group(clips, destination, args):
         work = Path(directory)
         entries = []
         for index, clip in enumerate(clips):
-            segment = work / f"segment{index}.mkv"
+            segment = work / f"segment{index}.nut"
             duration = normalize(clip, segment, args, size)
             entries.append(f"file '{segment.name}'\nduration {duration:.9f}\n")
         manifest = work / "segments.ffconcat"
