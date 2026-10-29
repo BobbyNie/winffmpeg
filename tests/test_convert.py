@@ -166,6 +166,20 @@ class ConversionTests(unittest.TestCase):
         self.assertTrue((self.root / "output" / "b-healthy.mp4").is_file())
         self.assertFalse(any(p.is_dir() for p in (self.root / "output").iterdir()))
 
+    def test_invalid_arguments_and_missing_dependencies_have_clear_exit_codes(self):
+        for rate in ["0", "-25", "1/0", "nan", "abc", "25,fps=1"]:
+            with self.subTest(rate=rate):
+                result = self.cli(f"--fps={rate}", expected=2)
+                self.assertNotIn("Traceback", result.stderr)
+        for arguments in [("--input", str(self.root / "missing")),
+                          ("--ffmpeg", "missing-ffmpeg-executable"),
+                          ("--ffprobe", "missing-ffprobe-executable")]:
+            with self.subTest(arguments=arguments):
+                result = self.cli(*arguments, expected=2)
+                self.assertNotIn("Traceback", result.stderr)
+        result = self.cli(expected=1)
+        self.assertIn("No video", result.stdout + result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

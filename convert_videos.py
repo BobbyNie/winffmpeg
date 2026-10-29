@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import sys
+import shutil
 from fractions import Fraction
 from pathlib import Path
 import subprocess
@@ -109,10 +110,20 @@ def convert_group(clips, destination, args):
             staged.unlink()
 
 
+def frame_rate(value):
+    try:
+        rate = Fraction(value)
+        if rate > 0:
+            return rate
+    except (ValueError, ZeroDivisionError):
+        pass
+    raise argparse.ArgumentTypeError("fps must be a positive number, such as 25 or 30000/1001")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, default=Path("video"))
-    parser.add_argument("--fps", type=Fraction, default=Fraction(25), help="Output frames per second (default: 25)")
+    parser.add_argument("--fps", type=frame_rate, default=Fraction(25), help="Output frames per second (default: 25)")
     parser.add_argument("--deinterlace", choices=("force", "auto", "off"), default="force",
                         help="force removes combing even with missing interlace flags (default)")
     parser.add_argument("--parity", choices=("auto", "tff", "bff"), default="auto",
@@ -122,9 +133,18 @@ def main():
     parser.add_argument("--ffprobe", default="ffprobe")
     args = parser.parse_args()
     root = args.input.resolve()
+    if not root.is_dir():
+        parser.error(f"Input directory does not exist: {root}")
+    for tool in (args.ffmpeg, args.ffprobe):
+        if not shutil.which(tool):
+            parser.error(f"Executable not found: {tool}. Install FFmpeg and add its bin directory to PATH.")
     output = root / "output"
-    output.mkdir(exist_ok=True)
+    try:
+        output.mkdir(exist_ok=True)
+    except OSError as error:
+        parser.error(f"Cannot create output directory: {error}")
     failures = 0
+    processed = 0
     for group in sorted(root.iterdir(), key=filename_key):
         if not group.is_dir() or group == output:
             continue
@@ -132,13 +152,19 @@ def main():
                        key=lambda p: filename_key(p.relative_to(group)))
         if not clips:
             continue
+        processed += 1
+        destination = output / (group.name + ".mp4")
         try:
             print(f"[START] {group.name}: {len(clips)} clip(s)", flush=True)
-            convert_group(clips, output / (group.name + ".mp4"), args)
-            print(f"[OK] {output / (group.name + chr(46) + 'mp4')}", flush=True)
+            convert_group(clips, destination, args)
+            print(f"[OK] {destination}", flush=True)
         except (OSError, RuntimeError, ValueError, StopIteration) as error:
             failures += 1
             print(f"[ERROR] {group.name}: {error}", file=sys.stderr, flush=True)
+    if not processed:
+        print("[ERROR] No video groups found under the input directory.", file=sys.stderr)
+        return 1
+    print(f"[SUMMARY] {processed - failures} succeeded, {failures} failed.")
     return 1 if failures else 0
 
 
