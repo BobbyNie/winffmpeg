@@ -151,6 +151,21 @@ class ConversionTests(unittest.TestCase):
         self.assertGreater(scores["auto"], baseline * 0.8)
         self.assertLess(scores["force"], baseline * 0.25, scores)
 
+    def test_overwrite_is_explicit_and_failed_group_preserves_previous_output(self):
+        source = self.media(self.root / "a-broken" / "clip.avi")
+        self.cli()
+        output = self.root / "output" / "a-broken.mp4"
+        original = output.read_bytes()
+        self.cli(expected=1)
+        self.assertEqual(output.read_bytes(), original)
+        self.cli("--overwrite")
+        source.write_bytes(b"corrupted video")
+        self.media(self.root / "b-healthy" / "clip.avi")
+        self.cli("--overwrite", expected=1)
+        self.assertEqual(output.read_bytes(), original)
+        self.assertTrue((self.root / "output" / "b-healthy.mp4").is_file())
+        self.assertFalse(any(p.is_dir() for p in (self.root / "output").iterdir()))
+
 
 if __name__ == "__main__":
     unittest.main()

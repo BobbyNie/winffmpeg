@@ -2,6 +2,8 @@
 """Convert each first-level video folder to one progressive H.264 MP4."""
 import argparse
 import json
+import os
+import sys
 from fractions import Fraction
 import re
 from pathlib import Path
@@ -80,9 +82,11 @@ def normalize(source, target, args, size):
 
 
 def convert_group(clips, destination, args):
+    if destination.exists() and not args.overwrite:
+        raise RuntimeError(f"Output exists: {destination}. Use --overwrite to replace it.")
     info = probe(clips[0], args.ffprobe)
     size = display_size(next(s for s in info["streams"] if s["codec_type"] == "video"))
-    with tempfile.TemporaryDirectory(prefix="winffmpeg-") as directory:
+    with tempfile.TemporaryDirectory(prefix=".winffmpeg-", dir=destination.parent) as directory:
         work = Path(directory)
         entries = []
         for index, clip in enumerate(clips):
@@ -94,7 +98,17 @@ def convert_group(clips, destination, args):
         run([args.ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
              "-f", "concat", "-safe", "1", "-i", str(manifest),
              "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
-             "-movflags", "+faststart", str(destination)])
+             "-movflags", "+faststart", str(work / "result.mp4")])
+        staged = work / "result.mp4"
+        if args.overwrite:
+            os.replace(staged, destination)
+        elif os.name == "nt":
+            # Windows rename fails if another process has created the destination.
+            os.rename(staged, destination)
+        else:
+            # POSIX rename would overwrite; an exclusive hard link will not.
+            os.link(staged, destination)
+            staged.unlink()
 
 
 def main():
@@ -105,12 +119,14 @@ def main():
                         help="force removes combing even with missing interlace flags (default)")
     parser.add_argument("--parity", choices=("auto", "tff", "bff"), default="auto",
                         help="Input field order: auto, top field first, or bottom field first")
+    parser.add_argument("--overwrite", action="store_true", help="Replace existing outputs only after success")
     parser.add_argument("--ffmpeg", default="ffmpeg")
     parser.add_argument("--ffprobe", default="ffprobe")
     args = parser.parse_args()
     root = args.input.resolve()
     output = root / "output"
     output.mkdir(exist_ok=True)
+    failures = 0
     for group in sorted(root.iterdir(), key=natural_key):
         if not group.is_dir() or group == output:
             continue
@@ -118,8 +134,14 @@ def main():
                        key=lambda p: natural_key(p.relative_to(group)))
         if not clips:
             continue
-        convert_group(clips, output / (group.name + ".mp4"), args)
-    return 0
+        try:
+            print(f"[START] {group.name}: {len(clips)} clip(s)", flush=True)
+            convert_group(clips, output / (group.name + ".mp4"), args)
+            print(f"[OK] {output / (group.name + chr(46) + 'mp4')}", flush=True)
+        except (OSError, RuntimeError, ValueError, StopIteration) as error:
+            failures += 1
+            print(f"[ERROR] {group.name}: {error}", file=sys.stderr, flush=True)
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":
