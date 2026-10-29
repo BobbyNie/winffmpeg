@@ -71,6 +71,38 @@ class ConversionTests(unittest.TestCase):
         subprocess.run([FFMPEG, "-v", "error", "-xerror", "-i", str(output),
                         "-f", "null", "-"], check=True, capture_output=True)
 
+    def pixel(self, path, at):
+        result = subprocess.run(
+            [FFMPEG, "-v", "error", "-ss", str(at), "-i", str(path), "-frames:v", "1",
+             "-vf", "scale=1:1", "-pix_fmt", "rgb24", "-f", "rawvideo", "pipe:1"],
+            check=True, capture_output=True,
+        )
+        return tuple(result.stdout)
+
+    def test_recursive_groups_merge_in_natural_order_and_normalize_mixed_media(self):
+        group = self.root / "旅行 ' & one"
+        self.media(group / "clip10.mkv", color="blue", size="128x72", rate=30, audio=True)
+        self.media(group / "clip2.AVI", color="lime")
+        self.media(group / "sub" / "clip1.avi", color="red", size="64x96", rate=24)
+        (group / "notes.txt").write_text("not video", encoding="utf-8")
+        self.media(self.root / "another" / "only.avi", color="yellow")
+        self.media(self.root / "root-level-ignored.avi")
+        (self.root / "empty").mkdir()
+        (self.root / "output" / "nested").mkdir(parents=True)
+        (self.root / "output" / "nested" / "broken.mp4").write_bytes(b"ignore output")
+        self.cli()
+        output = self.root / "output" / "旅行 ' & one.mp4"
+        info = self.probe(output)
+        video = next(s for s in info["streams"] if s["codec_type"] == "video")
+        self.assertEqual((video["width"], video["height"]), (96, 64))
+        self.assertAlmostEqual(float(video["duration"]), 2.4, delta=0.12)
+        for at, channel in [(0.3, 1), (1.1, 2), (1.9, 0)]:
+            pixel = self.pixel(output, at)
+            self.assertGreater(pixel[channel], 100, (at, pixel))
+            self.assertEqual(pixel.index(max(pixel)), channel, (at, pixel))
+        self.assertEqual({p.name for p in (self.root / "output").glob("*.mp4")},
+                         {"旅行 ' & one.mp4", "another.mp4"})
+
 
 if __name__ == "__main__":
     unittest.main()
