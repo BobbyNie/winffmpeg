@@ -115,6 +115,42 @@ class ConversionTests(unittest.TestCase):
                 self.assertEqual(video["r_frame_rate"], expected)
                 self.assertAlmostEqual(float(video["duration"]), 0.8, delta=0.05)
 
+    def comb_score(self, path):
+        result = subprocess.run(
+            [FFMPEG, "-v", "error", "-i", str(path), "-an", "-pix_fmt", "gray",
+             "-f", "rawvideo", "pipe:1"], check=True, capture_output=True,
+        )
+        data = result.stdout
+        frame_size = 96 * 64
+        self.assertEqual(len(data) % frame_size, 0)
+        differences = []
+        for start in range(0, len(data), frame_size):
+            frame = data[start:start + frame_size]
+            differences.extend(abs(frame[y * 96 + x] - frame[(y + 1) * 96 + x])
+                               for y in range(2, 61) for x in range(96))
+        return sum(differences) / len(differences)
+
+    def test_deinterlacing_removes_motion_combing_even_with_wrong_progressive_flags(self):
+        source = self.root / "motion" / "interlaced.mkv"
+        source.parent.mkdir()
+        pattern = ("nullsrc=s=96x64:r=50:d=1.2,"
+                   "geq=lum='if(between(X,mod(N*4,80),mod(N*4,80)+15),235,16)':cb=128:cr=128,"
+                   "tinterlace=mode=interleave_top,setfield=prog")
+        subprocess.run([FFMPEG, "-v", "error", "-f", "lavfi", "-i", pattern,
+                        "-c:v", "ffv1", str(source)], check=True, capture_output=True)
+        baseline = self.comb_score(source)
+        self.assertGreater(baseline, 10)
+        scores = {}
+        for mode in ["off", "auto", "force"]:
+            with self.subTest(mode=mode):
+                self.cli("--deinterlace", mode, "--parity", "tff")
+                output = self.root / "output" / "motion.mp4"
+                scores[mode] = self.comb_score(output)
+                output.unlink()
+        self.assertGreater(scores["off"], baseline * 0.8)
+        self.assertGreater(scores["auto"], baseline * 0.8)
+        self.assertLess(scores["force"], baseline * 0.25, scores)
+
 
 if __name__ == "__main__":
     unittest.main()

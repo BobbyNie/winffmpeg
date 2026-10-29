@@ -47,7 +47,11 @@ def normalize(source, target, args, size):
     info = probe(source, args.ffprobe)
     audio = any(stream["codec_type"] == "audio" for stream in info["streams"])
     width, height = size
-    filters = (f"bwdif=mode=send_field:parity=auto:deint=all,fps={args.fps},setpts=PTS-STARTPTS,"
+    deinterlace = ""
+    if args.deinterlace != "off":
+        mode = "all" if args.deinterlace == "force" else "interlaced"
+        deinterlace = f"bwdif=mode=send_field:parity={args.parity}:deint={mode},"
+    filters = (deinterlace + f"fps={args.fps},setpts=PTS-STARTPTS,"
                "scale=w='max(2,trunc(iw*sar/2)*2)':h='max(2,trunc(ih/2)*2)',setsar=1,"
                f"scale={width}:{height}:force_original_aspect_ratio=decrease:force_divisible_by=2,"
                f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1")
@@ -97,6 +101,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, default=Path("video"))
     parser.add_argument("--fps", type=Fraction, default=Fraction(25), help="Output frames per second (default: 25)")
+    parser.add_argument("--deinterlace", choices=("force", "auto", "off"), default="force",
+                        help="force removes combing even with missing interlace flags (default)")
+    parser.add_argument("--parity", choices=("auto", "tff", "bff"), default="auto",
+                        help="Input field order: auto, top field first, or bottom field first")
     parser.add_argument("--ffmpeg", default="ffmpeg")
     parser.add_argument("--ffprobe", default="ffprobe")
     args = parser.parse_args()
