@@ -180,6 +180,31 @@ class ConversionTests(unittest.TestCase):
         result = self.cli(expected=1)
         self.assertIn("No video", result.stdout + result.stderr)
 
+    def test_directory_links_cannot_import_external_clips_or_redirect_outputs(self):
+        external = Path(self.temp.name) / "external"
+        external.mkdir()
+        (external / "broken.mp4").write_bytes(b"must not read external media")
+        group = self.root / "safe"
+        self.media(group / "clip.avi")
+
+        def link_directory(link, target):
+            if os.name == "nt":
+                command = f'mklink /J "{link}" "{target}"'
+                subprocess.run([os.environ.get("COMSPEC", "cmd.exe"), "/d", "/c", command],
+                               check=True, capture_output=True)
+            else:
+                link.symlink_to(target, target_is_directory=True)
+
+        link_directory(group / "linked", external)
+        link_directory(self.root / "linked-group", external)
+        self.cli()
+        self.assertTrue((self.root / "output" / "safe.mp4").is_file())
+        shutil.rmtree(self.root / "output")
+        link_directory(self.root / "output", external)
+        result = self.cli("--overwrite", expected=2)
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertEqual({p.name for p in external.iterdir()}, {"broken.mp4"})
+
 
 if __name__ == "__main__":
     unittest.main()

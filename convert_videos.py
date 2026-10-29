@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import shutil
+import stat
 from fractions import Fraction
 from pathlib import Path
 import subprocess
@@ -31,6 +32,25 @@ def probe(path, executable):
 def filename_key(path):
     """Sort by file name first, then relative path, without numeric collation."""
     return path.name.casefold(), path.as_posix().casefold(), path.as_posix()
+
+
+def is_link(path):
+    """Also reject Windows junctions and other reparse points on Python 3.11."""
+    attributes = getattr(path.lstat(), "st_file_attributes", 0)
+    return path.is_symlink() or bool(attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT)
+
+
+def collect_clips(group):
+    clips = []
+    def fail(error):
+        raise error
+    for directory, folders, files in os.walk(group, followlinks=False, onerror=fail):
+        parent = Path(directory)
+        folders[:] = [name for name in folders if not is_link(parent / name)]
+        clips.extend(parent / name for name in files
+                     if Path(name).suffix.lower() in EXTENSIONS
+                     and not is_link(parent / name) and (parent / name).is_file())
+    return sorted(clips, key=lambda p: filename_key(p.relative_to(group)))
 
 
 def display_size(stream):
@@ -140,16 +160,17 @@ def main():
             parser.error(f"Executable not found: {tool}. Install FFmpeg and add its bin directory to PATH.")
     output = root / "output"
     try:
+        if output.exists() and is_link(output):
+            parser.error(f"Output directory must not be a symbolic link or junction: {output}")
         output.mkdir(exist_ok=True)
     except OSError as error:
         parser.error(f"Cannot create output directory: {error}")
     failures = 0
     processed = 0
     for group in sorted(root.iterdir(), key=filename_key):
-        if not group.is_dir() or group == output:
+        if is_link(group) or not group.is_dir() or group.name.casefold() == "output":
             continue
-        clips = sorted((p for p in group.rglob("*") if p.is_file() and p.suffix.lower() in EXTENSIONS),
-                       key=lambda p: filename_key(p.relative_to(group)))
+        clips = collect_clips(group)
         if not clips:
             continue
         processed += 1
