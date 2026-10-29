@@ -192,7 +192,7 @@ class ConversionTests(unittest.TestCase):
         def link_directory(link, target):
             if os.name == "nt":
                 command = f'mklink /J "{link}" "{target}"'
-                subprocess.run([os.environ.get("COMSPEC", "cmd.exe"), "/d", "/c", command],
+                subprocess.run(f'"{os.environ.get("COMSPEC", "cmd.exe")}" /d /c {command}',
                                check=True, capture_output=True)
             else:
                 link.symlink_to(target, target_is_directory=True)
@@ -248,7 +248,7 @@ class ConversionTests(unittest.TestCase):
             command = (f'call "{local_launcher}" --ffmpeg "{FFMPEG}" '
                        f'--ffprobe "{FFPROBE}" {arguments}')
             result = subprocess.run(
-                [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/c", command],
+                f'"{os.environ.get("COMSPEC", "cmd.exe")}" /d /c {command}',
                 cwd=PROJECT, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,
             )
             self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
