@@ -3,6 +3,8 @@ import json
 import os
 from pathlib import Path
 import shutil
+import math
+import struct
 import subprocess
 import sys
 import tempfile
@@ -204,6 +206,34 @@ class ConversionTests(unittest.TestCase):
         result = self.cli("--overwrite", expected=2)
         self.assertNotIn("Traceback", result.stderr)
         self.assertEqual({p.name for p in external.iterdir()}, {"broken.mp4"})
+
+    def test_audio_track_selection_uses_requested_track_and_rejects_missing_track(self):
+        source = self.root / "sound" / "tracks.mkv"
+        source.parent.mkdir()
+        subprocess.run(
+            [FFMPEG, "-v", "error", "-f", "lavfi", "-i", "color=c=red:s=96x64:r=25:d=0.8",
+             "-f", "lavfi", "-i", "anullsrc=r=48000:cl=mono",
+             "-f", "lavfi", "-i", "sine=frequency=880:sample_rate=44100",
+             "-map", "0:v:0", "-map", "1:a:0", "-map", "2:a:0", "-t", "0.8",
+             "-c:v", "mpeg4", "-c:a", "pcm_s16le", str(source)],
+            check=True, capture_output=True,
+        )
+        levels = []
+        for arguments in [(), ("--audio-track", "1")]:
+            self.cli(*arguments)
+            output = self.root / "output" / "sound.mp4"
+            result = subprocess.run(
+                [FFMPEG, "-v", "error", "-i", str(output), "-map", "0:a:0",
+                 "-f", "s16le", "pipe:1"], check=True, capture_output=True,
+            )
+            samples = [item[0] for item in struct.iter_unpack("<h", result.stdout)]
+            self.assertTrue(samples)
+            levels.append(math.sqrt(sum(s * s for s in samples) / len(samples)))
+            output.unlink()
+        self.assertLess(levels[0], 1)
+        self.assertGreater(levels[1], 100)
+        self.cli("--audio-track", "5", expected=1)
+        self.cli("--audio-track=-1", expected=2)
 
 
 if __name__ == "__main__":

@@ -66,7 +66,10 @@ def display_size(stream):
 
 def normalize(source, target, args, size):
     info = probe(source, args.ffprobe)
-    audio = any(stream["codec_type"] == "audio" for stream in info["streams"])
+    tracks = [s for s in info["streams"] if s["codec_type"] == "audio"]
+    audio = bool(tracks)
+    if audio and args.audio_track >= len(tracks):
+        raise RuntimeError(f"{source}: audio track {args.audio_track} does not exist ({len(tracks)} track(s)).")
     width, height = size
     deinterlace = ""
     if args.deinterlace != "off":
@@ -92,7 +95,7 @@ def normalize(source, target, args, size):
         command += ["-i", str(source)]
     else:
         command += ["-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo"]
-    command += ["-map", "0:v:0", "-map", "1:a:0", "-map_metadata", "-1", "-map_chapters", "-1",
+    command += ["-map", "0:v:0", "-map", f"1:a:{args.audio_track if audio else 0}", "-map_metadata", "-1", "-map_chapters", "-1",
                 "-c:v", "copy", "-af", "asetpts=PTS-STARTPTS,aresample=48000,apad",
                 "-c:a", "pcm_s16le", "-ar", "48000", "-ac", "2", "-t", f"{duration:.9f}", str(target)]
     run(command)
@@ -140,6 +143,16 @@ def frame_rate(value):
     raise argparse.ArgumentTypeError("fps must be a positive number, such as 25 or 30000/1001")
 
 
+def nonnegative_integer(value):
+    try:
+        number = int(value)
+        if number >= 0:
+            return number
+    except ValueError:
+        pass
+    raise argparse.ArgumentTypeError("audio track must be a nonnegative integer (first track: 0)")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, default=Path("video"))
@@ -148,6 +161,8 @@ def main():
                         help="force removes combing even with missing interlace flags (default)")
     parser.add_argument("--parity", choices=("auto", "tff", "bff"), default="auto",
                         help="Input field order: auto, top field first, or bottom field first")
+    parser.add_argument("--audio-track", type=nonnegative_integer, default=0,
+                        help="Zero-based audio track index; no-audio clips get silence (default: 0)")
     parser.add_argument("--overwrite", action="store_true", help="Replace existing outputs only after success")
     parser.add_argument("--ffmpeg", default="ffmpeg")
     parser.add_argument("--ffprobe", default="ffprobe")
