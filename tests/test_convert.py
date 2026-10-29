@@ -103,6 +103,18 @@ class ConversionTests(unittest.TestCase):
         self.assertEqual({p.name for p in (self.root / "output").glob("*.mp4")},
                          {"旅行 ' & one.mp4", "another.mp4"})
 
+    def test_custom_integer_and_fractional_frame_rates(self):
+        self.media(self.root / "fps" / "clip.avi")
+        for rate, expected in [("50", "50/1"), ("30000/1001", "30000/1001")]:
+            with self.subTest(rate=rate):
+                output = self.root / "output" / "fps.mp4"
+                if output.exists():
+                    output.unlink()
+                self.cli("--fps", rate)
+                video = self.probe(output)["streams"][0]
+                self.assertEqual(video["r_frame_rate"], expected)
+                self.assertAlmostEqual(float(video["duration"]), 0.8, delta=0.05)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -47,7 +47,7 @@ def normalize(source, target, args, size):
     info = probe(source, args.ffprobe)
     audio = any(stream["codec_type"] == "audio" for stream in info["streams"])
     width, height = size
-    filters = ("bwdif=mode=send_field:parity=auto:deint=all,fps=25,setpts=PTS-STARTPTS,"
+    filters = (f"bwdif=mode=send_field:parity=auto:deint=all,fps={args.fps},setpts=PTS-STARTPTS,"
                "scale=w='max(2,trunc(iw*sar/2)*2)':h='max(2,trunc(ih/2)*2)',setsar=1,"
                f"scale={width}:{height}:force_original_aspect_ratio=decrease:force_divisible_by=2,"
                f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1")
@@ -60,7 +60,7 @@ def normalize(source, target, args, size):
     packets = json.loads(run([args.ffprobe, "-v", "error", "-select_streams", "v:0",
                               "-count_packets", "-show_entries", "stream=nb_read_packets",
                               "-of", "json", str(video_only)]))
-    duration = int(packets["streams"][0]["nb_read_packets"]) / 25
+    duration = int(packets["streams"][0]["nb_read_packets"]) / float(args.fps)
     command = [args.ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
                "-i", str(video_only)]
     if audio:
@@ -96,6 +96,7 @@ def convert_group(clips, destination, args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, default=Path("video"))
+    parser.add_argument("--fps", type=Fraction, default=Fraction(25), help="Output frames per second (default: 25)")
     parser.add_argument("--ffmpeg", default="ffmpeg")
     parser.add_argument("--ffprobe", default="ffprobe")
     args = parser.parse_args()
