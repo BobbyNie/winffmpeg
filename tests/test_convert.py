@@ -79,7 +79,7 @@ class ConversionTests(unittest.TestCase):
         )
         return tuple(result.stdout)
 
-    def test_recursive_groups_merge_in_natural_order_and_normalize_mixed_media(self):
+    def test_recursive_groups_merge_in_filename_lexical_order_and_normalize_mixed_media(self):
         group = self.root / "旅行 ' & one"
         self.media(group / "clip10.mkv", color="blue", size="128x72", rate=30, audio=True)
         self.media(group / "clip2.AVI", color="lime")
@@ -94,9 +94,9 @@ class ConversionTests(unittest.TestCase):
         output = self.root / "output" / "旅行 ' & one.mp4"
         info = self.probe(output)
         video = next(s for s in info["streams"] if s["codec_type"] == "video")
-        self.assertEqual((video["width"], video["height"]), (96, 64))
+        self.assertEqual((video["width"], video["height"]), (64, 96))
         self.assertAlmostEqual(float(video["duration"]), 2.4, delta=0.12)
-        for at, channel in [(0.3, 1), (1.1, 2), (1.9, 0)]:
+        for at, channel in [(0.3, 0), (1.1, 2), (1.9, 1)]:
             pixel = self.pixel(output, at)
             self.assertGreater(pixel[channel], 100, (at, pixel))
             self.assertEqual(pixel.index(max(pixel)), channel, (at, pixel))

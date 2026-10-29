@@ -5,7 +5,6 @@ import json
 import os
 import sys
 from fractions import Fraction
-import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -28,10 +27,9 @@ def probe(path, executable):
     return json.loads(run([executable, "-v", "error", "-show_streams", "-of", "json", str(path)]))
 
 
-def natural_key(path):
-    text = path.as_posix().casefold()
-    return tuple((1, int(part)) if part.isdigit() else (0, part)
-                 for part in re.split(r"(\d+)", text)), path.as_posix()
+def filename_key(path):
+    """Sort by file name first, then relative path, without numeric collation."""
+    return path.name.casefold(), path.as_posix().casefold(), path.as_posix()
 
 
 def display_size(stream):
@@ -127,11 +125,11 @@ def main():
     output = root / "output"
     output.mkdir(exist_ok=True)
     failures = 0
-    for group in sorted(root.iterdir(), key=natural_key):
+    for group in sorted(root.iterdir(), key=filename_key):
         if not group.is_dir() or group == output:
             continue
         clips = sorted((p for p in group.rglob("*") if p.is_file() and p.suffix.lower() in EXTENSIONS),
-                       key=lambda p: natural_key(p.relative_to(group)))
+                       key=lambda p: filename_key(p.relative_to(group)))
         if not clips:
             continue
         try:
