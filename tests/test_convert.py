@@ -235,6 +235,26 @@ class ConversionTests(unittest.TestCase):
         self.cli("--audio-track", "5", expected=1)
         self.cli("--audio-track=-1", expected=2)
 
+    def test_windows_launcher_uses_its_own_video_directory_and_preserves_exit_code(self):
+        launcher = PROJECT / "convert_videos.cmd"
+        self.assertTrue(launcher.is_file(), "Windows launcher must be included")
+        if os.name != "nt":
+            return  # The command interpreter is exercised by the Windows CI job.
+        local_launcher = Path(self.temp.name) / launcher.name
+        shutil.copy2(launcher, local_launcher)
+        shutil.copy2(SCRIPT, Path(self.temp.name) / SCRIPT.name)
+        self.media(self.root / "launcher" / "clip.avi")
+        for arguments, expected in [("--fps 50", 0), ("--fps 0", 2)]:
+            command = (f'call "{local_launcher}" --ffmpeg "{FFMPEG}" '
+                       f'--ffprobe "{FFPROBE}" {arguments}')
+            result = subprocess.run(
+                [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/c", command],
+                cwd=PROJECT, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120,
+            )
+            self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+        info = self.probe(self.root / "output" / "launcher.mp4")
+        self.assertEqual(info["streams"][0]["r_frame_rate"], "50/1")
+
 
 if __name__ == "__main__":
     unittest.main()
